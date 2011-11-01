@@ -72,6 +72,30 @@ hr {
 	font-style: italic;
 }
 
+#draggable {
+	width: 150px;
+	height: 150px;
+	border: 2px #333 solid;
+	position: absolute;
+	top: 20px;
+	left: 20px;
+	background: rgba(255,255,255,0.4);
+}
+
+#drag-handle {
+	width: 50px;
+	height: 50px;
+	margin: 50px auto;
+	background: #a00;
+	cursor: move;
+}
+
+
+
+
+
+
+
 
 
 
