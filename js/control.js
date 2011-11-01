@@ -20,7 +20,7 @@
 				);
 				var draggable = DragDrop.bind(dragElement, {
 					anchor: document.getElementById('drag-handle'),
-					boundingBox: 'offsetParent'
+					boundingBox: 'windowSize'
 				});
 				return false;
 			}

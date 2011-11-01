@@ -39,8 +39,8 @@ var handle = /* ... create element ... */;
 var draggable = DragDrop.bind(element, {
     // The anchor; element moves when handle is dragged
     anchor: handle,
-    // The draggable element will now stay bound within it's offsetParent
-    boundingBox: 'offsetParent'
+    // The draggable element will now stay bound within the window dimensions
+    boundingBox: 'windowSize'
 });</pre>
 		</div>
 
