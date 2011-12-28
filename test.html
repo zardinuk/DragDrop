@@ -18,6 +18,7 @@
 		}
 		
 		#wrapper {
+			height:800px;
 			position: relative;
 			width: 80%;
 			margin: 20px auto;
@@ -28,10 +29,10 @@
 			box-shadow: 3px 3px 3px #888;
 		}
 		
-		#dragMe {
+		.dragMe {
 			position: absolute;
 			top: 15px;
-			left: 15px;
+			left: 300px;
 			width: 250px;
 			height: 250px;
 			border: 1px #333 solid;
@@ -41,7 +42,17 @@
 			font-family: sans-serif;
 		}
 		
-		#withMe {
+		#dropMe {
+			width: 250px;
+			height: 250px;
+			border: 1px #333 solid;
+			background: #0a6;
+			color: #fff;
+			font-size: 12px;
+			font-family: sans-serif;
+		}
+		
+		.withMe {
 			width: 242px;
 			background: #666;
 			border-bottom: 1px #333 solid;
@@ -49,89 +60,42 @@
 			padding: 4px;
 		}
 		
-		#dragMe p {
+		.dragMe p {
 			padding: 4px;
 		}
 		
-		p.text {
-			color: #999;
-			font-size: 32px;
-			font-family: "URW Chancery L", cursive;
-			width: 650px;
-			margin: 0 auto;
-			padding: 200px 0;
+		div#dropMe.drop {
+			border-color:#f00;
 		}
-		
+
+		.placeholder {
+			height:20px;
+			border:1px solid #f00; 
+		}
 	</style>
 	
+	<script type="text/javascript" charset="utf-8" src="requirejs/require.js" data-main="main.js"></script>
 </head>
 <body>
 	
 	<div id="wrapper">
-		<div id="dragMe">
-			<div id="withMe">
-				Drag Me! :D
-			</div>
-			<p>
-				This is some text to test that there are no text selection issues.
-			</p>
+		<div class="dragMe">
+			<span>Drag Me</span>
+			<p>This is some text to test that there are no text selection issues.</p>
 		</div>
 	
-		<p class="text">
-			Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis libero enim, lacinia sed hendrerit
-			sit amet, congue ut ipsum. Nullam mollis, risus eu porta scelerisque.
-		</p>
+		<div id="dropMe">
+			<div class="sortMe" id="sort_me_1">
+			  Sort Me 1
+			</div>
+			<div class="sortMe" id="sort_me_2">
+			  Sort Me 2
+			</div>
+			<div class="sortMe" id="sort_me_3">
+			  Sort Me 3
+			</div>
+		</div>
 	</div>
-	
-	<!-- JavaScript Includes -->
-	<script type="text/javascript" charset="utf-8" src="drag-drop.js"></script>
-	<script type="text/javascript">
-		
-		var dragMe = document.getElementById('dragMe');
-		var withMe = document.getElementById('withMe');
-		
-		var shouldntHappen = function() {
-			console.log('THIS SHOULDN\'T HAPPEN');
-		};
-		
-		
-		var dragRef = DragDrop.bind(dragMe, {
-			anchor: withMe,
-			boundingBox: 'offsetParent',
-			dragstart: function(evt) {
-				console.log('DragDrop.bind dragstart', evt);
-			},
-			drag: function(evt) {
-				console.log('DragDrop.bind drag', evt);
-			},
-			dragend: function(evt) {
-				console.log('DragDrop.bind dragend', evt);
-			}
-		});
 
-		
-		dragRef.bindEvent('dragstart', function(evt) {
-			console.log('DragDrop.bindEvent dragstart', evt);
-		});
-		dragRef.bindEvent('drag', function(evt) {
-			console.log('DragDrop.bindEvent drag', evt);
-		});
-		dragRef.bindEvent('dragend', function(evt) {
-			console.log('DragDrop.bindEvent dragend', evt);
-		});
-
-		
-		dragRef.bindEvent('dragstart', shouldntHappen);
-		dragRef.unbindEvent('dragstart', shouldntHappen);
-		
-		dragRef.bindEvent('drag', shouldntHappen);
-		dragRef.unbindEvent('drag', shouldntHappen);
-		
-		dragRef.bindEvent('dragend', shouldntHappen);
-		dragRef.unbindEvent('dragend', shouldntHappen);
-		
-		
-	</script>
-	
 </body>
 </html>
