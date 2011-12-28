@@ -1,11 +1,12 @@
 h1. DragDrop
 
-h3. A JavaScript micro-framework for adding drag-and-drop functionality to elements for advanced UI development
+h3. A JavaScript framework for adding drag-and-drop functionality to elements for advanced UI development
+in Backbone/jQuery applications. Includes modules for Droppable, Sortable and Groups.
 
-Author: James Brumond
-Version: 0.2.3-beta
+Author: Jeff Moss (based on the DragDrop micro-framework by James Brumond)
+Version: 0.3.0-beta
 
-Copyright 2011 James Brumond
+Copyright 2011 Jeff Moss
 Dual licensed under MIT and GPL
 
 h4. Notice
@@ -23,18 +24,12 @@ h2. Features
 h2. Samples! :)
 
 <pre><code>// Make myElement drag-and-drop enabled
-DragDrop.bind(myElement);
-
-// A more complex version
-var draggable = DragDrop.bind(myElement, {
+var draggable = DragDrop.draggable({
+    element: myElement,
     // The anchor; myElement moves when anotherElement is dragged
     anchor: anotherElement,
     // The draggable element will now stay bound within it's offsetParent
-    boundingBox: 'offsetParent',
-    // Define a dragstart event
-    dragstart: function(evt) {
-        // ...
-    }
+    boundingBox: 'offsetParent'
 });
 
 // Change the bounding box to some manual positions
@@ -43,8 +38,8 @@ draggable.setBoundingBox({
     y: { min: 0, max: 400 }
 });
 
-// Define a new dragend event
-draggable.bindEvent('dragend', function(evt) {
+// Define a new dragend event (using Backbone.Events)
+draggable.bind('dragend', function(evt) {
     // ...
 });
 
