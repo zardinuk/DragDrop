@@ -10,474 +10,559 @@
  * @license    Dual licensed under MIT and GPL
  */
 
-(function() {
+define([
+  'underscore',
+  'jquery',
+  'backbone',
+  'events'
+], function(_, $, Backbone, Events) {
+  var
 	
-	var
-	
-	// Is this a touch device?
-	touchEvents = (function() {
-		var ret, elem = document.createElement('div');
-		ret = ('ontouchstart' in elem);
-		elem = null;
-		return ret;
-	}()),
-	
-	// A class to add when an element is being dragged
-	dragClass = 'drag',
-	
-	/**
-	 * The DragDrop namespace
-	 *
-	 * Example:
-	 * 
-	 *   DragDrop.bind ( element[, options ]);
-	 *   DragDrop.unbind ( reference );
-	 *
-	 * @access  public
-	 */
-	DragDrop = (function() {
-		var self = { },
-		
-		// Determine the events to bind to
-		events = (touchEvents ?
-			{
-				start: 'touchstart',
-				move: 'touchmove',
-				end: 'touchend'
-			} : {
-				start: 'mousedown',
-				move: 'mousemove',
-				end: 'mouseup'
-			}
-		),
-		
-		// Elements already bound
-		bindings = [ ],
-		
-		// Check if a given binding (element/anchor pair) already exists
-		bindingExists = function(element, anchor) {
-			for (var i = 0, c = bindings.length; i < c; i++) {
-				if (bindings.element === element && bindings.anchor === anchor) {
-					return true;
-				}
-			}
-			return false;
-		},
-		
-		// Do something with a given binding's given event stack
-		withBindingEvent = function(reference, event, func) {
-			if (bindings[reference._id] && bindings[reference._id].events[event]) {
-				func(bindings[reference._id].events[event]);
-			}
-		},
-		
-		// Parse the arguments of DragDrop.bind
-		parseOptions = function(element, options) {
-			options = options || { };
-			options.element = element;
-			options.anchor = options.anchor || element;
-			options.boundingBox = options.boundingBox || null;
-			return options;
-		},
-		
-		// The next binding ID to use
-		nextBinding = 1,
+  // Is this a touch device?
+  touchEvents = (function() {
+    var ret, elem = document.createElement('div');
+    ret = ('ontouchstart' in elem);
+    elem = null;
+    return ret;
+  }()),
+  
+  // Determine the events to bind to,
+  events = (touchEvents ?
+	    {
+	      start: 'touchstart',
+	      move: 'touchmove',
+	      end: 'touchend'
+	    } : {
+	      start: 'mousedown',
+	      move: 'mousemove',
+	      end: 'mouseup'
+	    }
+	   ),
 
-	// ------------------------------------------------------------------
-	//  A constructor for a resource type used in referencing bindings
-		
-		BindingReference = function() {
-			this._id = nextBinding++;
-		};
-		
-		BindingReference.prototype.unbind = function() {
-			return DragDrop.unbind(this);
-		};
-		
-		BindingReference.prototype.bindEvent = function(event, func) {
-			return DragDrop.bindEvent(this, event, func);
-		};
-		
-		BindingReference.prototype.unbindEvent = function(event, func) {
-			return DragDrop.unbindEvent(this, event, func);
-		};
-		
-		BindingReference.prototype.invokeEvent = function(event, source) {
-			return DragDrop.invokeEvent(this, event, source);
-		};
-		
-		BindingReference.prototype.setBoundingBox = function(box) {
-			bindings[this._id].boundingBox = box;
-		};
-		
+  // ----------------------------------------------------------------------------
+  //  Helper Functions
+	
+  // Get the dimensions of the window
+  getWindowSize = function() {
+    return {
+      x: window.innerWidth || document.documentElement.clientWidth || body().clientWidth,
+      y: window.innerHeight || document.documentElement.clientHeight || body().clientHeight
+    };
+  },
+	
+  // Stop an event
+  stopEvent = function(evt) {
+    if (evt.preventDefault) {
+      evt.preventDefault();
+    }
+    if (evt.stopPropagation) {
+      evt.stopPropagation();
+    }
+    evt.returnValue = false;
+    return false;
+  },
+
+  Box = {
+    pointIntersect: function(point) {
+      return point.x >= this.left && point.x <= this.right && point.y >= this.top && point.y <= this.bottom;
+    },
+    // North-West of Bottom-Right point, used for sorting
+    NWofBR: function(point) {
+      return point.x <= this.right && point.y <= this.bottom;
+    },
+    // South-East of Top-Left point, used for sorting
+    SEofTL: function(point) {
+      return this.top <= point.y && this.left <= point.x;
+    },
+    resetBounds: function(el) {
+      var offset = el.offset();
+      this.top = offset.top;
+      this.left = offset.left;
+      this.right = offset.left + el.width();
+      this.bottom = offset.top + el.height();
+    }
+  },
+	
+  DragDrop = {
+    // ------------------------------------------------------------------
+    //  A constructor for a resource type used in referencing bindings
+    Draggable: function(){
+      // The next binding ID to use
+      var nextBinding = 1;
+
+      var klass = function(options) {
+	_.extend(this, {
+	  _id:      nextBinding++,
+	  dragging: false,
+	  groups:   options.groups || [],
+	  boundingBox: options.boundingBox,
+	  anchor:   $(options.anchor || options.element),
+	  el:       $(options.element)
+	});
+
+	_.each(options.events, function(evt, func){
+	  this.bind(evt, func);
+	}, this);
+
+	this.el.bind(events.start, _.bind(this.dragStart, this));
+
+	this.onDrag    = _.bind(this.drag, this);
+	this.onDragEnd = _.bind(this.dragStop, this);
+      };
+    
+      klass.prototype = {
+	// A class to add when an element is being dragged
+	dragClass: 'drag',
+      
+	drag: function(e) {
+	  if (this._proxy) {
+	    // Find all needed offsets
+	    var offsetX = e.clientX - this.dx;
+	    var offsetY = e.clientY - this.dy;
+
+	    var offsetWidth = this._proxy.width();
+	    var offsetHeight = this._proxy.height();
+	    // Find the new positions
+	    var posX = this.startX + offsetX;
+	    var posY = this.startY + offsetY;
+	    // Enforce any bounding box
+	    if (this.boundingBox) {
+	      var box = this.boundingBox;
+	      var minX, maxX, minY, maxY;
+	      // Bound inside offset parent
+	      if (box === 'offsetParent') {
+		var parent = this.el.offsetParent();
+		minX = minY = 0;
+		maxX = parent.width();
+		maxY = parent.height();
+	      }
+	      // Bound to the dimensions of the window
+	      else if (box === 'windowSize') {
+		var dimensions = getWindowSize();
+		minX = minY = 0;
+		maxX = dimensions.x;
+		maxY = dimensions.y;
+	      }
+	      // Manual bounding box
+	      else {
+		minX = box.x.min;
+		maxX = box.x.max;
+		minY = box.y.min;
+		maxY = box.y.max;
+	      }
+	      posX = Math.max(minX, Math.min(maxX - offsetWidth, posX));
+	      posY = Math.max(minY, Math.min(maxY - offsetHeight, posY));
+	    }
+	    // Move the element
+	    this._proxy.css({left: posX});
+	    this._proxy.css({top: posY});
+	  }
+
+	  // Call any "drag" events
+	  this.trigger('drag', e, this);
+		  
+	  return stopEvent(e);
+	},
+	dragStart: function(e){
+	  // Make sure it's a left click
+	  if ((window.event && e.button === 1) || e.button === 0) {
+	    // Call any "beforedrag" events before calculations begin
+	    this.trigger('beforedrag', e, this);
+	    // Make sure everyone knows the element is being dragged
+	    this.dragging = true;
+
+	    if(!this.container) {
+	      // Start calculating movement
+	      this.proxyStart();
+	    }
+
+	    // Record where we started dragging
+	    this.dx = e.clientX;
+	    this.dy = e.clientY;
+
+	    // Bind the movement event
+	    $(document).bind(events.move, this.onDrag);
+	    $(document).bind(events.end, this.onDragEnd);
+
+	    // Avoid text selection problems
+	    document.body.focus();
+	    this.selStop = Events.bind(document, 'selectstart', false);
+
+	    // Call any "dragstart" events
+	    this.trigger('dragstart', e, this);
+
+	    return stopEvent(e);
+	  }
+	},
+	dragStop: function(e){
+	  // Unbind move and end events
+	  $(document).unbind(events.move, this.onDrag);
+	  $(document).unbind(events.end, this.onDragEnd);
+
+	  // Unbind text selection intercepts
+	  Events.unbind(this.selStop);
+
+	  // Clean up...
+	  this.dragging = false;
+
+	  // Call any "dragend" events
+	  this.trigger('dragend', e, this)
+
+	  // Clear the proxy, revert back to the previous state if no commit was issued
+	  this.ditchProxy();
+
+	  return stopEvent(e);
+	},
+	destroy: function() {
+	  // Remove DOM event listener
+	  Events.unbind(this.dragEvent);
+	  // Remove us from groups we're part of
+	  this.disband();
+	  // Remove all event listeners
+	  this.unbind();
+	},
+	disband: function(){
+	  _.each(this.groups, function(group){
+	    group.remove(this);
+	  }, this);
+	},
+
+	// Interface features
+	// Proxy is what floats around on the screen underneath the mouse cursor when there is no container
+	proxy: function() {
+	  // return this.el;
+	  var proxy = this.el.clone();
+	  proxy.css({opacity: 0.5});
+	  proxy.addClass(this.dragClass);
+	  return proxy;
+	},
+	proxyStart: function() {
+	  this._proxy = this.proxy();
+	  this._proxy.insertBefore(this.el);
+
+	  var pos = this._proxy.position();
+	  this.startX = pos.left;
+	  this.startY = pos.top;
+
+	  this._proxy.css({position: 'absolute', top: pos.top, left: pos.left});
+	},
+	ditchProxy: function() {
+	  if (this._proxy) {
+	    this._proxy.remove();
+	    this._proxy = null;
+	  }
+	},
+	// Drop is triggered when a free-float draggable is comitted, typically replaces the placeholder
+	drop: function() {
+	  this.el.detach();
+	  this.el.css({position:'static', top:0, left:0, height:'auto',border:0});
+	  return this.el;
+	},
+	// Placeholder is locked in to position in the containers from a free-floating draggable
+	placeholder: function() {
+	  if(!this._placeholder) {
+	    this._placeholder = this.el.clone();
+	    this._placeholder.css({position:'static', top:0, left:0, height:'auto',border:0});
+	  }
+	  return this._placeholder;
+	},
+	ditchPlaceholder: function() {
+	  this._placeholder.remove();
+	  this._placeholder = null;
+	},
+	attach: function(container) {
+	  this.ditchProxy();
+	  if(!container.el.find(this.el)[0])
+	    container.el.append(this.placeholder());
+	  this.container = container;
+	},
+	detach: function() {
+	  this.container = null;
+	  if(this._placeholder) {
+	    this.ditchPlaceholder();
+	  }
+	  this.proxyStart();
+	},
+	// Drag end states
+	commit: function() {
+	  if(this._placeholder) {
+	    this.drop().insertBefore(this._placeholder);
+	    this.ditchPlaceholder();
+	  }
+	},
+
+	// Utilities
+	// snapEl is the element that snaps into different places as the drag, either
+	// _placeholder or el.
+	snapEl: function() {
+	  return this._placeholder || this.el;
+	},
+	positionIn: function(list) {
+	  return _.indexOf(list, this.snapEl()[0]);
+	},
+	moveBefore: function(el) {
+	  this.snapEl().insertBefore(el);
+	},
+	moveAfter: function(el) {
+	  this.snapEl().insertAfter(el);
+	}
+      };
+
+      _.extend(klass.prototype, Backbone.Events);
+      
+      return klass;
+    }(),
+
+    /**
+     * A droppable container, the default drop behavior is to append the draggable
+     */
+    Droppable: function() {
+      var klass = function(options) {
+	_.extend(this, {
+	  groups:   options.groups || [],
+	  el:       $(options.element),
+	  drop:     options.drop || this.drop,
+	  dropping: false
+	});
+
+	_.each(this.groups, function(group){
+	  group.bind('dragstart', this.dropStart, this);
+	  group.bind('dragend', this.dropStop, this);
+	}, this);
+      };
+
+      klass.prototype = {
+	dropClass: 'drop',
+
+	// overrides
+	// receive - take the draggable placeholder and apply it to this droppable
+	receive: function(e, draggable) {
+	  draggable.attach(this);
+	},
+	surrender: function(e, draggable) {
+	  draggable.detach();
+	},
+	// drop - replace the placeholder with a permanant object
+	drop: function(e, draggable) {
+	  draggable.commit();
+	},
+
+	// Calculate intersection, might want a delay here
+	drag: function(e, draggable) {
+	  if (this.pointIntersect({x: e.clientX, y: e.clientY})) {
+	    if (draggable.container != this) {
+	      this.dragOver(e, draggable);
+	    }
+	  } else {
+	    if (draggable.container == this) {
+	      this.dragOut(e, draggable);
+	    }
+	  }
+	},
+
+	// Only monitor events when there is an item being dragged that we recognize
+	dropStart: function(e, draggable, group) {
+	  this.resetBounds(this.el);
+
+	  if (draggable.container == this)
+	    this.activate();
+
+	  draggable.bind('drag', this.drag, this);
+
+	  this.trigger('dropstart', e, draggable);
+	},
+	dropStop: function(e, draggable, group) {
+	  draggable.unbind('drag', this.drag);
+	  
+	  if(draggable.container == this) {
+	    // Commit
+	    this.drop(e, draggable);
+	    this.deactivate();
+	  }
+
+	  this.trigger('dropend', e, draggable);
+	},
+
+	// Mouseover behaviors
+	dragOver: function(e, draggable){
+	  this.activate();
+	  this.receive(e, draggable);
+	  this.trigger('dragover', e, draggable);
+	},
+	dragOut: function(e, draggable){
+	  this.surrender(e, draggable)
+	  this.deactivate();
+	  this.trigger('dragout', e, draggable);
+	},
+
+	// basic vehaviors
+	activate: function() {
+	  this.el.addClass(this.dropClass);
+	},
+	deactivate: function() {
+	  this.el.removeClass(this.dropClass);
+	}
+      };
+
+      _.extend(klass.prototype, Backbone.Events);
+      _.extend(klass.prototype, Box);
+      
+      return klass;
+    }(),
+    
+    /**
+     * A sortable container.
+     * Works similar to a droppable but will also place drops according to a sorting algo.
+     */
+    Sortable: function() {
+      var klass = function(options) {
+	_.extend(this, {
+	  groups:   options.groups || [],
+	  el:       $(options.element)
+	});
+
+	if(options.droppable) {
+	  if (options.droppable instanceof DragDrop.Droppable) {
+	    this.droppable = options.droppable
+	  } else {
+	    this.droppable = new DragDrop.Droppable(options.droppable);
+	  }
+	  this.droppable.bind('dragover', this.sortStart, this);
+	  this.droppable.bind('dragout', this.sortStop, this);
+	}
+
+	this.itemSelector = options.items;
+      };
+
+      klass.prototype = {
+	refresh: function(){
+	  this.items = $(this.itemSelector, this.el).toArray();
+	  _.each(this.items, function(itemEl){
+	    if(!itemEl.resetBounds) _.extend(itemEl, Box);
+	    itemEl.resetBounds($(itemEl));
+	  });
+	},
+	sortStart: function(e, draggable, group) {
+	  this.refresh();
+
+	  draggable.bind('drag', this.drag, this);
+	},
+	sortStop: function(e, draggable, group) {
+	  draggable.unbind('drag', this.drag);
+	},
+	drag: function(e, draggable) {
+	  var curPos      = draggable.positionIn(this.items),
+	      point       = {x: e.clientX, y: e.clientY};
+
+	  for(var i = curPos - 1; i >= 0; i--) {
+	    if(this.items[i].NWofBR(point)){
+	      draggable.moveBefore(this.items[i]);
+	      this.refresh();
+	      return;
+	    }
+	  }
+
+	  for(var i = curPos + 1; i < this.items.length; i++) {
+	    if(this.items[i].SEofTL(point)){
+	      draggable.moveAfter(this.items[i]);
+	      this.refresh();
+	      return;
+	    }
+	  }
+	}
+      };
+
+      return klass;
+    }(),
+    
+    /**
+     * The DragDrop namespace
+     *
+     * Example:
+     * 
+     *   DragDrop.bind ( element[, options ]);
+     *   DragDrop.unbind ( reference );
+     *   new DragDrop.Draggable();
+     *
+     * @access  public
+     */
+    Group: function() {
+      var klass = function() {
+	// Elements bound
+	this.bindings = [];
+
+	this.onDragStart = _.bind(this.dragStart, this);
+	this.onDragStop  = _.bind(this.dragStop, this);
+      };
+      
+      klass.prototype = {
 	// ----------------------------------------------------------------------------
 	//  Public Functions
-		
-		// Make an element draggable
-		self.bind = function(element, options) {
-			options = parseOptions(element, options);
-			if (isObject(options.element)) {
-				// Check to make sure the elements aren't already bound
-				if (! bindingExists(options.element, options.anchor)) {
-					// Initialize the binding object
-					var reference = new BindingReference();
-					var binding = {
-						element: options.element,
-						anchor: options.anchor,
-						dragging: false,
-						event: null,
-						shouldUnbind: false,
-						boundingBox: options.boundingBox,
-						events: {
-							beforedrag: Callstack(options.beforedrag),
-							dragstart: Callstack(options.dragstart),
-							dragend: Callstack(options.dragend),
-							drag: Callstack(options.drag),
-							unbind: Callstack(options.unbind)
-						}
-					};
-					// Bind the first event
-					binding.event = Events.bind(binding.anchor, events.start, function(e) {
-						// Make sure it's a left click
-						if ((window.event && e.button === 1) || e.button === 0) {
-							// Call any "beforedrag" events before calculations begin
-							binding.events.beforedrag.call(
-								binding.element, new DragEvent('beforedrag', e)
-							);
-							// Make sure everyone knows the element is being dragged
-							binding.dragging = true;
-							addClass(binding.element, dragClass);
-							// Start calculating movement
-							var startX = getPos(binding.element, 'left');
-							var startY = getPos(binding.element, 'top');
-							var tempEvents = [ ];
-							// Bind the movement event
-							tempEvents.push(Events.bind(document, events.move, function(e2) {
-								// Find all needed offsets
-								var offsetX = e2.clientX - e.clientX;
-								var offsetY = e2.clientY - e.clientY;
-								var offsetWidth = binding.element.offsetWidth;
-								var offsetHeight = binding.element.offsetHeight;
-								// Find the new positions
-								var posX = startX + offsetX;
-								var posY = startY + offsetY;
-								// Enforce any bounding box
-								if (options.boundingBox) {
-									var box = options.boundingBox;
-									var minX, maxX, minY, maxY;
-									// Bound inside offset parent
-									if (box === 'offsetParent') {
-										var parent = binding.element.offsetParent;
-										minX = minY = 0;
-										maxX = parent.offsetWidth;
-										maxY = parent.offsetHeight;
-									}
-									// Bound to the dimensions of the window
-									else if (box === 'windowSize') {
-										var dimensions = getWindowSize();
-										minX = minY = 0;
-										maxX = dimensions.x;
-										maxY = dimensions.y;
-									}
-									// Manual bounding box
-									else {
-										minX = box.x.min;
-										maxX = box.x.max;
-										minY = box.y.min;
-										maxY = box.y.max;
-									}
-									posX = Math.max(minX, Math.min(maxX - offsetWidth, posX));
-									posY = Math.max(minY, Math.min(maxY - offsetHeight, posY));
-								}
-								// Move the element
-								binding.element.style.left = posX + 'px';
-								binding.element.style.top = posY + 'px';
-								// Call any "drag" events
-								binding.events.drag.call(
-									binding.element, new DragEvent('drag', e2)
-								);
-								return stopEvent(e2);
-							}));
-							// Bind the release event
-							tempEvents.push(Events.bind(document, events.end, function(e2) {
-								// Unbind move and end events
-								for (var i = 0, c = tempEvents.length; i < c; i++) {
-									Events.unbind(tempEvents[i]);
-								}
-								// Clean up...
-								binding.dragging = false;
-								removeClass(binding.element, dragClass);
-								if (binding.shouldUnbind) {
-									DragDrop.unbind(binding.element, binding.anchor);
-								}
-								// Call any "dragend" events
-								binding.events.dragend.call(
-									binding.element, new DragEvent('dragend', e2)
-								);
-								return stopEvent(e2);
-							}));
-							// Avoid text selection problems
-							document.body.focus();
-							tempEvents.push(Events.bind(document, 'selectstart', false));
-							tempEvents.push(Events.bind(binding.anchor, 'dragstart', false));
-							// Call any "dragstart" events
-							binding.events.dragstart.call(
-								binding.element, new DragEvent('dragstart', e)
-							);
-							return stopEvent(e);
-						}
-					});
-					// Add the binding to the list
-					bindings[reference._id] = binding;
-					return reference;
-				}
-			}
-		};
-		
-		// Remove an element's draggableness
-		self.unbind = function(reference) {
-			if (reference instanceof BindingReference) {
-				var id = reference._id;
-				if (bindings[id]) {
-					if (bindings[id].dragging) {
-						bindings[id].shouldUnbind = true;
-					} else {
-						Events.unbind(bindings[id].event);
-						bindings[id] = null;
-					}
-					// Call any "unbind" events
-					binding.events.unbind.call(
-						binding.element, new DragEvent('unbind', e)
-					);
-				}
-			}
-		};
-		
-		// Bind a drag event
-		self.bindEvent = function(reference, event, func) {
-			withBindingEvent(reference, event, function(stack) {
-				stack.push(func);
-			});
-		};
-		
-		// Unbind a drag event
-		self.unbindEvent = function(reference, event, func) {
-			withBindingEvent(reference, event, function(stack) {
-				stack.remove(func);
-			});
-		};
-		
-		// Manually invoke a drag event
-		self.invokeEvent = function(reference, event, source) {
-			withBindingEvent(reference, event, function(stack) {
-				stack.call(
-					bindings[reference._id].element,
-					new DragEvent(event, source)
-				);
-			});
-		};
-		
-		return self;
-	}()),
+    
+	// Make an element draggable
+	add: function(options) {
+	  var self = this;
 	
-// ----------------------------------------------------------------------------
-//  Helper Functions
-	
-	// Array Remove - By John Resig (MIT Licensed)
-	arrayRemove = function(array, from, to) {
-		var rest = array.slice((to || from) + 1 || array.length);
-		array.length = from < 0 ? array.length + from : from;
-		return array.push.apply(array, rest);
-	},
-	
-	// Get the position of an element
-	getPos = function(elem, from) {
-		var pos = parseFloat(getStyle(elem, from));
-		return (isNaN(pos) ? 0 : pos);
-	},
-	
-	// Get a style property from an element
-	getStyle = function(elem, prop) {
-		if (elem.currentStyle) {
-			return elem.currentStyle[prop];
-		} else if (window.getComputedStyle) {
-			return document.defaultView.getComputedStyle(elem, null).getPropertyValue(prop);
-		} else if (elem.style) {
-			return elem.style[prop];
-		}
-	},
-	
-	// Get the dimensions of the window
-	getWindowSize = function() {
-		return {
-			x: window.innerWidth || document.documentElement.clientWidth || body().clientWidth,
-			y: window.innerHeight || document.documentElement.clientHeight || body().clientHeight
-		};
-	},
-	
-	// Stop an event
-	stopEvent = function(evt) {
-		if (evt.preventDefault) {
-			evt.preventDefault();
-		}
-		if (evt.stopPropagation) {
-			evt.stopPropagation();
-		}
-		evt.returnValue = false;
-		return false;
-	},
-	
-	// Regular expressions for matching classnames
-	cnRegexes = { },
+	  // Parse options
+	  options = options || { };
 
-	// Remove a class from an element
-	removeClass = function(elem, cn) {
-		if (! cnRegexes[cn]) {
-			cnRegexes[cn] = new RegExp('(^|\\s)+' + cn + '(\\s|$)+');
-		}
-		elem.className = elem.className.replace(cnRegexes[cn], ' ');
+	  if (options.element) {
+	    // Check to make sure the elements aren't already bound
+	    var existingBinding = _.find(this.bindings, function(b){
+	      return b.el[0] = options.element;
+	    });
+
+	    if (existingBinding)
+	      return existingBinding;
+
+	    // Initialize the binding object
+	    var draggable = new DragDrop.Draggable({
+	      groups: [this],
+	      element: options.element,
+	      anchor: options.anchor,
+	      events: options.events,
+	      boundingBox: options.boundingBox
+	    });
+
+	    draggable.bind('dragstart', this.onDragStart);
+	    draggable.bind('dragend', this.onDragStop);
+	  
+	    // Add the draggable to the list
+	    self.bindings.push(draggable);
+
+	    return draggable;
+	  }
 	},
-	
-	// Add a class to an element
-	addClass = function(elem, cn) {
-		removeClass(elem, cn);
-		elem.className += ' ' + cn;
+
+	// Remove an element's draggableness
+	remove: function(draggable) {
+	  if (draggable instanceof Draggable) {
+	    this.bindings = _.without(this.bindings, draggable);
+
+	    draggable.unbind('dragstart', this.onDragStart);
+	    draggable.unbind('dragend', this.onDragEnd);
+	  
+	    // Call any "unbind" events
+	    draggable.trigger('unbind', this);
+	  }
 	},
-	
-	// Check for a non-null object
-	isObject = function(value) {
-		return !! (value && typeof value === 'object');
+
+	dragStart: function(e, draggable) {
+	  this.trigger('dragstart', e, draggable, this);
 	},
+
+	dragStop: function(e, draggable) {
+	  this.trigger('dragend', e, draggable, this);
+	}
+      };
+
+      _.extend(klass.prototype, Backbone.Events);
+
+      return klass;
+    }()
+  };
 	
-	/**
-	 * A stackable function
-	 *
-	 * @access  private
-	 * @param   function  an initial function
-	 * @return  function
-	 */
-	Callstack = function(func) {
-		var stack = [ ];
-		var result = function() {
-			var ret;
-			for (var i = 0, c = stack.length; i < c; i++) {
-				ret = stack[i].apply(this, arguments);
-			}
-			return ret;
-		};
-		result.push = function() {
-			stack.push.apply(stack, arguments);
-		};
-		result.remove = function() {
-			var args = Array.prototype.slice.call(arguments);
-			var result = [ ];
-			OUTER: for (var i = 0, c1 = stack.length; i < c1; i++) {
-				for (var j = 0, c2 = args.length; j < c2; j++) {
-					if (stack[i] === args[j]) {
-						continue OUTER;
-					}
-				}
-				result.push(stack[i]);
-			}
-			stack = result;
-		};
-		if (typeof func === 'function') {
-			stack.push(func);
-		}
-		return result;
-	},
-	
-	/**
-	 * Custom event constructor
-	 *
-	 * @access  private
-	 * @param   string    type
-	 * @param   object    original event object
-	 */
-	DragEvent = function DragEvent(type, original) {
-		this.type = type;
-		this.originalEvent = original;
-		this.altKey = original.altKey || false;
-		this.ctrlKey = original.ctrlKey || false;
-		this.shiftKey = original.shiftKey || false;
-		this.timestamp = original.timestamp || (+new Date);
-	},
-	
-	/**
-	 * A namespace with functions for event binding
-	 *
-	 * Example:
-	 *
-	 *   Bind
-	 *    var evt = Events.bind(obj, 'event', function() { ... });
-	 *
-	 *   Unbind
-	 *    Events.unbind(evt);
-	 *     -OR-
-	 *    evt.unbind();
-	 *
-	 * @access  private
-	 */
-	Events = (function() {
-	
-		var
-	
-		// Bind an event
-		bindEvent = (function() {
-			if (document.addEventListener) {
-				return function(obj, event, func) {
-					obj.addEventListener(event, func, false);
-				};
-			} else if (document.attachEvent) {
-				return function(obj, event, func) {
-					obj.attachEvent('on' + event, func);
-				};
-			} else {
-				return function() { };
-			}
-		}()),
-	
-		// Unbind an event
-		unbindEvent = (function() {
-			if (document.removeEventListener) {
-				return function(obj, event, func) {
-					obj.removeEventListener(event, func, false);
-				};
-			} else if (document.detachEvent) {
-				return function(obj, event, func) {
-					obj.detachEvent('on' + event, func);
-				};
-			} else {
-				return function() { };
-			}
-		}());
-		
-		// Build the return value
-		return {
-			bind: function(obj, event, func) {
-				var oldFunc = (func === false) ? function(e) {
-					return stopEvent(e);
-				} : func;
-				func = function(e) {
-					return oldFunc.call(obj, e || window.event);
-				};
-				bindEvent(obj, event, func);
-				var ret = function() {
-					unbindEvent(obj, event, func);
-				};
-				ret.unbind = function() {ret();};
-				return ret;
-			},
-			unbind: function(unbinder) {
-				unbinder();
-			}
-		};
-	
-	}());
-	
-// ----------------------------------------------------------------------------
-//  Expose
-	
-	window.DragDrop = DragDrop;
-	
-}());
+  // ----------------------------------------------------------------------------
+  //  Expose
+  return DragDrop;	
+});
