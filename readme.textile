@@ -24,30 +24,56 @@ h2. Features
 h2. Samples! :)
 
 <pre><code>// Make myElement drag-and-drop enabled
-var draggable = DragDrop.draggable({
-    element: myElement,
-    // The anchor; myElement moves when anotherElement is dragged
-    anchor: anotherElement,
-    // The draggable element will now stay bound within it's offsetParent
-    boundingBox: 'offsetParent'
+require([
+  'dragdrop'
+], function(DragDrop){
+
+    var group = new DragDrop.Group();
+
+    var dragMe = $('dragMe');
+    var dropMe = $('dropMe');
+
+    var draggable = group.add({
+        element: dragMe,
+        anchor:  dragMe,
+        boundingBox: 'offsetParent',
+        events: {
+            dragstart: function(evt) {
+                console.log('dragstart', evt);
+            },
+            drag: function(evt) {
+                console.log('drag', evt);
+            },
+            dragend: function(evt) {
+                console.log('dragend', evt);
+            }
+        }
+    });
+
+    var sortable = new DragDrop.Sortable({
+        element: dropMe,
+        // Be careful that this doesn't create circular references, best to start the selector with a ">"
+        items: '> div',
+        // Will accept stray draggables when the droppable is included
+        droppable: new DragDrop.Droppable({
+            element: dropMe,
+            groups: [group]
+        });
+    });
+
+    // Change the bounding box to some manual positions
+    draggable.setBoundingBox({
+        x: { min: 0, max: 600 },
+        y: { min: 0, max: 400 }
+    });
+
+    // Define a new dragend event (using Backbone.Events)
+    draggable.bind('dragend', function(evt) {
+        // ...
+    });
 });
 
-// Change the bounding box to some manual positions
-draggable.setBoundingBox({
-    x: { min: 0, max: 600 },
-    y: { min: 0, max: 400 }
-});
-
-// Define a new dragend event (using Backbone.Events)
-draggable.bind('dragend', function(evt) {
-    // ...
-});
-
-// This is how you would remove a drag event (if one were defined above)
-draggable.unbindEvent('drag', theBoundDragEventFunction);</code></pre>
-
-
-
+</code></pre>
 
 
 
