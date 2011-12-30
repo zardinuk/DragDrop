@@ -2,11 +2,11 @@
  * DragDrop.js
  *
  * A JavaScript micro-framework for adding drag-and-drop functionality
- * to elements for advanced UI development.
+ * to elements for advanced UI development with Backbone and jQuery/Zepto.
  *
- * @author     James Brumond
- * @version    0.2.3-beta
- * @copyright  Copyright 2011 James Brumond
+ * @author     Jeff Moss (original by James Brumond)
+ * @version    0.3-beta
+ * @copyright  Copyright 2011 Jeff Moss
  * @license    Dual licensed under MIT and GPL
  */
 
